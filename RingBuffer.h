@@ -41,6 +41,12 @@ public:
         if (i >= count_) throw std::out_of_range("RingBuffer index out of range");
         return buffer_[(start_ + i) % Capacity];
     }
+    T& back() {
+        return (*this)[count_ - 1];
+    }
+    const T& back() const {
+        return (*this)[count_ - 1];
+    }
 
     // Copy out in linear order (oldest→newest).
     template<std::size_t N = Capacity>
