@@ -1,18 +1,22 @@
+#pragma once
+#include <array>
+#include <cstddef>
+#include <stdexcept>
 
-template<typename T>
+template<typename T, std::size_t Capacity>
 class RingBuffer {
 public:
-    // Constructs a ring buffer with fixed capacity.
-    explicit RingBuffer(size_t capacity)
-        : capacity_(capacity), buffer_(capacity), start_(0), count_(0) {}
+    // Constructs an empty ring buffer.
+    RingBuffer() : start_(0), count_(0) {}
 
-    // Adds an element to the buffer. When full, overwrites the oldest element.
+    // Adds an element. When full, overwrites the oldest.
     void push_back(const T& value) {
-        if (count_ < capacity_) {
-            buffer_[count_++] = value;
+        if (count_ < Capacity) {
+            buffer_[(start_ + count_) % Capacity] = value;
+            ++count_;
         } else {
             buffer_[start_] = value;
-            start_ = (start_ + 1) % capacity_;
+            start_ = (start_ + 1) % Capacity;
         }
     }
 
@@ -22,39 +26,33 @@ public:
         count_ = 0;
     }
 
-    // Returns the current number of stored elements.
-    size_t size() const { return count_; }
+    // Number of stored elements.
+    std::size_t size() const { return count_; }
 
-    // Returns the fixed capacity of the buffer.
-    size_t capacity() const { return capacity_; }
+    // Maximum capacity.
+    constexpr std::size_t capacity() const { return Capacity; }
 
-    // Random-access operator in "logical" order:
-    // Index 0 is the oldest element, index size()-1 is the most recent.
-    T& operator[](size_t index) {
-        if (index >= count_) {
-            throw std::out_of_range("RingBuffer index out of range");
-        }
-        return buffer_[(start_ + index) % capacity_];
+    // Random-access in logical order (0 = oldest).
+    T& operator[](std::size_t i) {
+        if (i >= count_) throw std::out_of_range("RingBuffer index out of range");
+        return buffer_[(start_ + i) % Capacity];
+    }
+    const T& operator[](std::size_t i) const {
+        if (i >= count_) throw std::out_of_range("RingBuffer index out of range");
+        return buffer_[(start_ + i) % Capacity];
     }
 
-    const T& operator[](size_t index) const {
-        if (index >= count_) {
-            throw std::out_of_range("RingBuffer index out of range");
-        }
-        return buffer_[(start_ + index) % capacity_];
-    }
-
-    // Optionally, retrieve a linearized copy of the current contents.
-    void getLinearized(std::vector<T>& out) const {
-        out.resize(count_);
-        for (size_t i = 0; i < count_; ++i) {
+    // Copy out in linear order (oldest→newest).
+    template<std::size_t N = Capacity>
+    void getLinearized(std::array<T, N>& out) const {
+        static_assert(N >= Capacity, "Output array too small");
+        for (std::size_t i = 0; i < count_; ++i) {
             out[i] = (*this)[i];
         }
     }
 
 private:
-    size_t capacity_;
-    std::vector<T> buffer_;
-    size_t start_;  // Index of the oldest element
-    size_t count_;  // Number of elements currently stored
+    std::array<T, Capacity> buffer_;
+    std::size_t             start_;  // index of oldest
+    std::size_t             count_;  // how many stored
 };

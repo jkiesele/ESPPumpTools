@@ -3,14 +3,15 @@
 
 #include "RingBuffer.h"
 
-template<typename T>
+template<typename T, std::size_t Lookahead>
 class PulseLookaheadDetector {
 public:
+    static constexpr std::size_t Capacity = 2 * Lookahead + 1;
     // The constructor sets up the ring buffer with a fixed capacity:
     // capacity = 2 * lookahead + 1.
     // this is a PEAK detector
-    explicit PulseLookaheadDetector(size_t lookahead, bool invert=false)
-        : lookahead_(lookahead), buffer_(2 * lookahead + 1), invert(invert) {}
+    explicit PulseLookaheadDetector(bool invert=false)
+        : buffer_(), invert(invert) {}
 
     // addSample:
     // Adds a new sample to the ring buffer. Once the buffer is full,
@@ -19,13 +20,11 @@ public:
     bool addSample(T sample) {
         buffer_.push_back(sample);
         
-        // Only proceed if the buffer is fully filled.
-        if (buffer_.size() < buffer_.capacity()) {
-            return false; // Not enough data yet.
-        }
+        // wait until buffer is full
+        if (buffer_.size() < Capacity) return false;
         
         // In the linearized view, the center sample is at index lookahead_
-        size_t centerIndex = lookahead_;
+        constexpr std::size_t centerIndex = Lookahead;
         T centerValue = buffer_[centerIndex];
         
         // BACKWARD: Check that every sample before the center is not greater than centerValue.
@@ -55,16 +54,16 @@ public:
         return true;
     }
 
-    // Returns the center value (i.e. the value at index 'lookahead_' in the linearized view).
+    // Once addSample() returned true, you can fetch the center value:
     T getCenterValue() const {
-        return buffer_[lookahead_];
+        return buffer_[Lookahead];
     }
     
     // Since the center is always at index 'lookahead_' when the buffer is full,
     // the offset (in number of samples) from the end of the buffer is:
     // capacity - lookahead, which equals (2*lookahead + 1 - lookahead) = lookahead + 1.
-    size_t getCenterIndexOffset() const {
-        return lookahead_+1;
+    constexpr std::size_t centerOffset() const {
+        return Lookahead;
     }
 
     // Clears the buffer.
@@ -73,8 +72,7 @@ public:
     }
 
 private:
-    const size_t lookahead_;
-    RingBuffer<T> buffer_;
+    RingBuffer<T, Capacity> buffer_;
     bool invert;
 };
 

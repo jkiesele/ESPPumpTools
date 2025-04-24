@@ -7,12 +7,12 @@
 #include "freertos/task.h"
 #include <atomic>
 
-class AsyncMonitoredPump : public MonitoredPump {
+template <std::size_t Lookahead>
+class AsyncMonitoredPump : public MonitoredPump<Lookahead> {
 public:
-    AsyncMonitoredPump(uint8_t enablePin, uint8_t touchPin,
-                        size_t lookahead, float pulsesPerMl,
+    AsyncMonitoredPump(uint8_t enablePin, uint8_t touchPin, float pulsesPerMl,
                         size_t approxSamplesPerPulse = 0)
-        : MonitoredPump(enablePin, touchPin, lookahead, pulsesPerMl, approxSamplesPerPulse),
+        : MonitoredPump<Lookahead>(enablePin, touchPin, pulsesPerMl, approxSamplesPerPulse),
           taskHandle_(nullptr), pulseTarget_(0), doFullDiagnostics_(false), 
           running_(false) {}
 
@@ -38,7 +38,7 @@ private:
         AsyncMonitoredPump* self = static_cast<AsyncMonitoredPump*>(param);
         // not needed esp_task_wdt_add(NULL);  // Register with watchdog
         self->running_.store(true);
-        self->MonitoredPump::runForPulses(self->pulseTarget_, self->doFullDiagnostics_);//feed watchdog
+        self->MonitoredPump<Lookahead>::runForPulses(self->pulseTarget_, self->doFullDiagnostics_);//feed watchdog
         self->running_.store(false);
         // not needed esp_task_wdt_delete(NULL);//unregister
         taskENTER_CRITICAL(&(self->localMux_));
@@ -54,5 +54,60 @@ private:
     portMUX_TYPE localMux_ = portMUX_INITIALIZER_UNLOCKED;
 
 };
+
+
+template <std::size_t Lookahead>
+bool AsyncMonitoredPump<Lookahead>::runForMl(float ml, bool fullDiagnostics, bool blocking) {
+    if (isBusy()) return false; // already running
+    if (!this->volumeSupported(ml)) return false; // not enough pulses
+    //get no of pulses
+    float pulsesNeeded = ml * this->pulsesPerMl();
+    return runForPulses(pulsesNeeded, fullDiagnostics, blocking);
+}
+
+template <std::size_t Lookahead>
+bool AsyncMonitoredPump<Lookahead>::runForPulses(uint32_t pulses, bool fullDiagnostics, bool blocking) {
+    if (isBusy()) return false; // already running
+    running_.store(true);//set the flag here
+    if(blocking){
+        //run in blocking mode
+        bool ret = MonitoredPump<Lookahead>::runForPulses(pulses, fullDiagnostics);
+        running_.store(false);//reset the flag also in blocking mode
+        return ret;
+    }
+
+    pulseTarget_ = pulses;
+    doFullDiagnostics_ = fullDiagnostics;
+
+    BaseType_t result = xTaskCreatePinnedToCore(
+        taskFunc,               // Function
+        ("PumpTask_"+String((uint32_t)this)).c_str() , // Name, add this pointer as hex
+        8192,                   // Stack size in bytes
+        this,                   // Pass this pointer
+        1,                      // Priority
+        &taskHandle_,           // Task handle out
+        0                       // Core 0, arduino core uses core 1
+    );
+
+    if (result != pdPASS) {
+        return false;
+    }
+    return true;//all good
+}
+
+template <std::size_t Lookahead>
+void AsyncMonitoredPump<Lookahead>::stop() {
+    if(!running_.load()) return;
+    taskENTER_CRITICAL(&localMux_);
+    TaskHandle_t handle = taskHandle_;
+    taskHandle_ = nullptr;
+    taskEXIT_CRITICAL(&localMux_);
+
+    if (handle != nullptr) {
+        vTaskDelete(handle);
+    }
+    running_.store(false);
+}
+
 
 #endif
