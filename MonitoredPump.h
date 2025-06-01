@@ -42,8 +42,23 @@ public:
     unsigned long baseline=0;
 };
 
+class MonitoredPumpBase {
+    // virtual base class for MonitoredPump
+public:
+    virtual ~MonitoredPumpBase() = default;
+    virtual bool runForMl(float ml, bool fulldiagnostics=false) = 0;
+    virtual bool runForPulses(uint32_t pulses, bool fulldiagnostics=false) = 0;
+    virtual void stop(){}
+    virtual bool isBusy() const{return false;} //should be overridden for async pumps
+    virtual bool isFinished() const{return true;} //should be overridden for async pumps
+    virtual const PumpDiagnostics& getDiagnostics() const = 0;
+    virtual void clearDiagnostics() = 0;
+    virtual float pulsesPerMl() const = 0;
+    virtual uint32_t getApproxSamplesPerPulse() const = 0;
+};
+
 template<std::size_t  Lookahead>
-class MonitoredPump {
+class MonitoredPump : public MonitoredPumpBase {
     /*
     * MonitoredPump class
     * This class is used to monitor the pump and detect pulses, as well as
@@ -105,7 +120,7 @@ public:
         // nothing to do here
     }
 //methods
-    bool runForPulses(uint32_t pulses, bool fulldiagnostics=false)  ;
+    bool runForPulses(uint32_t pulses, bool fulldiagnostics=false)  override;
     bool volumeSupported(float ml) const {
         return ml * pulsesPerMl_ > 5;
     }
@@ -115,7 +130,7 @@ public:
     uint32_t getApproxSamplesPerPulse() const {
         return approxSamplesPerPulse_;
     }
-    bool runForMl(float ml, bool fulldiagnostics=false) ;
+    bool runForMl(float ml, bool fulldiagnostics=false) override;
 
     const PumpDiagnostics& getDiagnostics() const {
         return diagnostics_;
@@ -171,7 +186,7 @@ bool MonitoredPump<Lookahead>::runForPulses(uint32_t pulses, bool fulldiagnostic
         // if either is true
         if(peak || trough){
             //a pulse was detected
-            diagnostics_.pulseTimes.push_back(micros() - (peakDetector.getCenterIndexOffset() * intervalMs * 1000));//roughly
+            diagnostics_.pulseTimes.push_back(micros() - (peakDetector.centerOffset() * intervalMs * 1000));//roughly
             
             int32_t valAtPulse = peakDetector.getCenterValue();
             if(trough)
@@ -185,12 +200,12 @@ bool MonitoredPump<Lookahead>::runForPulses(uint32_t pulses, bool fulldiagnostic
             diagnostics_.isPulse.push_back(false);
             //now if this was a pulse, set the entry in the past defined by lookahead to true
             if(peak){
-                int index = diagnostics_.isPulse.size() - peakDetector.getCenterIndexOffset();
+                int index = diagnostics_.isPulse.size() - peakDetector.centerOffset();
                 if(index >= 0 && index < diagnostics_.isPulse.size())
                     diagnostics_.isPulse[index] = true;
             }
             if(trough){
-                int index = diagnostics_.isPulse.size() - troughDetector.getCenterIndexOffset();
+                int index = diagnostics_.isPulse.size() - troughDetector.centerOffset();
                 if(index >= 0 && index < diagnostics_.isPulse.size())
                     diagnostics_.isPulse[index] = true;
             }

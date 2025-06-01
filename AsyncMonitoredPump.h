@@ -16,22 +16,22 @@ public:
           taskHandle_(nullptr), pulseTarget_(0), doFullDiagnostics_(false), 
           running_(false) {}
 
-    bool runForMl(float ml, bool fullDiagnostics = false, bool blocking = false); ;
+    bool runForMl(float ml, bool fullDiagnostics = false) override;
 
     // Kick off a background run, overrides runForPulses in MonitoredPump
-    bool runForPulses(uint32_t pulses, bool fullDiagnostics = false, bool blocking = false);
+    bool runForPulses(uint32_t pulses, bool fullDiagnostics = false) override;
 
     // Check if the task has completed
-    bool isFinished() const {
+    bool isFinished() const override {
         return !running_.load();
     }
 
     // compatibility to other pump classes
-    bool isBusy() const {
+    bool isBusy() const override {
         return running_.load();
     }
 
-    void stop();
+    void stop() override;
 
 private:
     static void taskFunc(void* param) {
@@ -57,25 +57,19 @@ private:
 
 
 template <std::size_t Lookahead>
-bool AsyncMonitoredPump<Lookahead>::runForMl(float ml, bool fullDiagnostics, bool blocking) {
+bool AsyncMonitoredPump<Lookahead>::runForMl(float ml, bool fullDiagnostics) {
     if (isBusy()) return false; // already running
     if (!this->volumeSupported(ml)) return false; // not enough pulses
     //get no of pulses
     float pulsesNeeded = ml * this->pulsesPerMl();
-    return runForPulses(pulsesNeeded, fullDiagnostics, blocking);
+    return runForPulses(pulsesNeeded, fullDiagnostics);
 }
 
 template <std::size_t Lookahead>
-bool AsyncMonitoredPump<Lookahead>::runForPulses(uint32_t pulses, bool fullDiagnostics, bool blocking) {
+bool AsyncMonitoredPump<Lookahead>::runForPulses(uint32_t pulses, bool fullDiagnostics) {
     if (isBusy()) return false; // already running
     running_.store(true);//set the flag here
-    if(blocking){
-        //run in blocking mode
-        bool ret = MonitoredPump<Lookahead>::runForPulses(pulses, fullDiagnostics);
-        running_.store(false);//reset the flag also in blocking mode
-        return ret;
-    }
-
+    
     pulseTarget_ = pulses;
     doFullDiagnostics_ = fullDiagnostics;
 

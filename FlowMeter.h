@@ -39,8 +39,8 @@ private:
     mutable portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 };
 
-#define CREATE_FLOWMETER(name, interruptPin, pulsesPerLiter) \
-    FlowMeter name(interruptPin, pulsesPerLiter); \
+#define CREATE_FLOWMETER(name, interruptPin, pulsesPerLiter, debouncetime) \
+    FlowMeter name(interruptPin, pulsesPerLiter,debouncetime); \
     void IRAM_ATTR name##_interruptHandler() { \
         name.handleInterrupt(); \
     }

@@ -8,6 +8,7 @@ FlowMeter::FlowMeter(int interruptPin, float pulsesPerLiter, uint32_t debounceTi
 
 void FlowMeter::__begin() {
     pinMode(interruptPin, INPUT_PULLUP);
+    lastInterruptTime = micros();
 }
 
 void FlowMeter::handleInterrupt() {
