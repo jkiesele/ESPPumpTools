@@ -8,6 +8,7 @@ extern "C" {
 #include <vector>
 #include <PulseLookaheadDetector.h>
 #include "esp_task_wdt.h"
+#include "LoggingBase.h"
 
 
 
@@ -54,6 +55,7 @@ public:
     virtual const PumpDiagnostics& getDiagnostics() const = 0;
     virtual void clearDiagnostics() = 0;
     virtual float pulsesPerMl() const = 0;
+    virtual bool volumeSupported(float ml) const = 0;
     virtual uint32_t getApproxSamplesPerPulse() const = 0;
 };
 
@@ -97,13 +99,10 @@ private:
 
 public:
 //constructor
-    MonitoredPump(uint8_t enablePin, uint8_t touchPin, 
-        size_t lookahead, float pulsesPerMl, size_t approxSamplesPerPulse=0)
+    MonitoredPump(uint8_t enablePin, uint8_t touchPin, float pulsesPerMl, size_t approxSamplesPerPulse=0)
         : enablePin_(enablePin), touchPin_(touchPin), 
         pulsesPerMl_(pulsesPerMl), approxSamplesPerPulse_(approxSamplesPerPulse),
-        peakDetector(), troughDetector(true) {
-        
-    }
+        peakDetector(), troughDetector(true) {}
     void begin() {
         pinMode(enablePin_, OUTPUT);
         digitalWrite(enablePin_, LOW);
@@ -121,7 +120,8 @@ public:
     }
 //methods
     bool runForPulses(uint32_t pulses, bool fulldiagnostics=false)  override;
-    bool volumeSupported(float ml) const {
+    bool volumeSupported(float ml) const override {
+        gLogger->println("Checking volume support for " + String(ml) + " ml with pulsesPerMl: " + String(pulsesPerMl_));
         return ml * pulsesPerMl_ > 5;
     }
     float pulsesPerMl() const {
