@@ -21,7 +21,7 @@ public:
     bool runForMl(float ml, bool fullDiagnostics = false) override;
 
     // Kick off a background run, overrides runForPulses in MonitoredPump
-    bool runForPulses(uint32_t pulses, bool fullDiagnostics = false) override;
+    bool runForPulses(uint32_t pulses, bool fullDiagnostics = false, std::atomic<bool>* abortFlag = nullptr) override;
 
     // Check if the task has completed
     bool isFinished() const override {
@@ -69,7 +69,7 @@ bool AsyncMonitoredPump<Lookahead>::runForMl(float ml, bool fullDiagnostics) {
 }
 
 template <std::size_t Lookahead>
-bool AsyncMonitoredPump<Lookahead>::runForPulses(uint32_t pulses, bool fullDiagnostics) {
+bool AsyncMonitoredPump<Lookahead>::runForPulses(uint32_t pulses, bool fullDiagnostics, std::atomic<bool>* abortFlag) {
     if (isBusy()) return false; // already running
     running_.store(true);//set the flag here
     
