@@ -9,6 +9,7 @@ extern "C" {
 #include <PulseLookaheadDetector.h>
 #include "esp_task_wdt.h"
 #include "LoggingBase.h"
+#include <atomic>
 
 
 
@@ -48,7 +49,7 @@ class MonitoredPumpBase {
 public:
     virtual ~MonitoredPumpBase() = default;
     virtual bool runForMl(float ml, bool fulldiagnostics=false) = 0;
-    virtual bool runForPulses(uint32_t pulses, bool fulldiagnostics=false) = 0;
+    virtual bool runForPulses(uint32_t pulses, bool fulldiagnostics=false, std::atomic<bool>* abortFlag=nullptr) = 0;
     virtual void stop(){}
     virtual bool isBusy() const{return false;} //should be overridden for async pumps
     virtual bool isFinished() const{return true;} //should be overridden for async pumps
@@ -119,9 +120,8 @@ public:
         // nothing to do here
     }
 //methods
-    bool runForPulses(uint32_t pulses, bool fulldiagnostics=false)  override;
+    bool runForPulses(uint32_t pulses, bool fulldiagnostics=false, std::atomic<bool>* abortFlag=nullptr)  override;
     bool volumeSupported(float ml) const override {
-        gLogger->println("Checking volume support for " + String(ml) + " ml with pulsesPerMl: " + String(pulsesPerMl_));
         return ml * pulsesPerMl_ > 5;
     }
     float pulsesPerMl() const {
@@ -131,6 +131,10 @@ public:
         return approxSamplesPerPulse_;
     }
     bool runForMl(float ml, bool fulldiagnostics=false) override;
+
+    void stop() override {
+        digitalWrite(enablePin_, LOW);
+    }
 
     const PumpDiagnostics& getDiagnostics() const {
         return diagnostics_;
@@ -143,7 +147,7 @@ public:
 
 
 template<std::size_t  Lookahead>
-bool MonitoredPump<Lookahead>::runForPulses(uint32_t pulses, bool fulldiagnostics)  {
+bool MonitoredPump<Lookahead>::runForPulses(uint32_t pulses, bool fulldiagnostics, std::atomic<bool>* abortFlag)  {
     if(pulses == 0){
         return false;
     }
@@ -176,6 +180,10 @@ bool MonitoredPump<Lookahead>::runForPulses(uint32_t pulses, bool fulldiagnostic
     const unsigned long intervalMs = 2;
     float raw_average = 0.0;
     while(pulses > 0){
+        if (abortFlag && abortFlag->load(std::memory_order_relaxed)) {
+            digitalWrite(enablePin_, LOW);
+            return false;                // aborted early
+        }
         //read the current value
         unsigned long raw_value = touchRead(touchPin_);
         raw_average += raw_value;

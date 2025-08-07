@@ -16,6 +16,8 @@ public:
           taskHandle_(nullptr), pulseTarget_(0), doFullDiagnostics_(false), 
           running_(false) {}
 
+    AsyncMonitoredPump(AsyncMonitoredPump&&) = default; //for move semantics
+
     bool runForMl(float ml, bool fullDiagnostics = false) override;
 
     // Kick off a background run, overrides runForPulses in MonitoredPump
@@ -38,7 +40,7 @@ private:
         AsyncMonitoredPump* self = static_cast<AsyncMonitoredPump*>(param);
         // not needed esp_task_wdt_add(NULL);  // Register with watchdog
         self->running_.store(true);
-        self->MonitoredPump<Lookahead>::runForPulses(self->pulseTarget_, self->doFullDiagnostics_);//feed watchdog
+        self->MonitoredPump<Lookahead>::runForPulses(self->pulseTarget_, self->doFullDiagnostics_, &self->abort_);//feed watchdog
         self->running_.store(false);
         // not needed esp_task_wdt_delete(NULL);//unregister
         taskENTER_CRITICAL(&(self->localMux_));
@@ -50,6 +52,7 @@ private:
     TaskHandle_t taskHandle_;
     uint32_t pulseTarget_;
     bool doFullDiagnostics_;
+    mutable std::atomic<bool> abort_{false}; 
     mutable std::atomic<bool> running_{false};
     portMUX_TYPE localMux_ = portMUX_INITIALIZER_UNLOCKED;
 
@@ -75,7 +78,7 @@ bool AsyncMonitoredPump<Lookahead>::runForPulses(uint32_t pulses, bool fullDiagn
 
     BaseType_t result = xTaskCreatePinnedToCore(
         taskFunc,               // Function
-        ("PumpTask_"+String((uint32_t)this)).c_str() , // Name, add this pointer as hex
+        nullptr , // Name, 
         8192,                   // Stack size in bytes
         this,                   // Pass this pointer
         1,                      // Priority
@@ -91,14 +94,30 @@ bool AsyncMonitoredPump<Lookahead>::runForPulses(uint32_t pulses, bool fullDiagn
 
 template <std::size_t Lookahead>
 void AsyncMonitoredPump<Lookahead>::stop() {
-    if(!running_.load()) return;
+     if (!running_.load()) return;           // nothing to do
+
+    abort_.store(true, std::memory_order_release); // ask worker to exit
+
+    TaskHandle_t h;
     taskENTER_CRITICAL(&localMux_);
-    TaskHandle_t handle = taskHandle_;
-    taskHandle_ = nullptr;
+    h = taskHandle_;                        // copy under lock
     taskEXIT_CRITICAL(&localMux_);
 
-    if (handle != nullptr) {
-        vTaskDelete(handle);
+    /*  Wait (max 1 s) until the task sets taskHandle_ = nullptr in
+        its epilogue.  The loop also feeds the WDT.                   */
+    uint32_t deadline = millis() + 1000;
+    while (h && millis() < deadline) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+        taskENTER_CRITICAL(&localMux_);
+        h = taskHandle_;
+        taskEXIT_CRITICAL(&localMux_);
+    }
+
+    /*  If the worker has *already* deleted itself, h is nullptr and
+        we’re done.  If it is still alive (timeout), fall back to a
+        forced delete but only when the state is not eDeleted yet.   */
+    if (h && eTaskGetState(h) != eDeleted) {
+        vTaskDelete(h);
     }
     running_.store(false);
 }
