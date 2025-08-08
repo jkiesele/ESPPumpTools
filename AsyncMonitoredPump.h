@@ -72,6 +72,7 @@ template <std::size_t Lookahead>
 bool AsyncMonitoredPump<Lookahead>::runForPulses(uint32_t pulses, bool fullDiagnostics, std::atomic<bool>* abortFlag) {
     if (isBusy()) return false; // already running
     running_.store(true);//set the flag here
+    abort_.store(false, std::memory_order_release);// reset abort flag
     
     pulseTarget_ = pulses;
     doFullDiagnostics_ = fullDiagnostics;

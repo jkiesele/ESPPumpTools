@@ -107,7 +107,7 @@ public:
     void begin() {
         pinMode(enablePin_, OUTPUT);
         digitalWrite(enablePin_, LOW);
-        pinMode(touchPin_, INPUT);
+        // pinMode(touchPin_, INPUT);
         
        // Set FSM to timer mode (more predictable)
         touch_pad_set_fsm_mode(TOUCH_FSM_MODE_TIMER);
