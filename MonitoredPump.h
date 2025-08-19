@@ -109,12 +109,15 @@ public:
         pinMode(enablePin_, OUTPUT);
         digitalWrite(enablePin_, LOW);
         // pinMode(touchPin_, INPUT);
+        threadSafe::touchRead(touchPin_);
         
        // Set FSM to timer mode (more predictable)
         touch_pad_set_fsm_mode(TOUCH_FSM_MODE_TIMER);
       
         // Reduce measurement and sleep cycles (faster but noisier)
         touch_pad_set_meas_time(24, 300);//in 8MHz clock sycles: total of 1.5ms
+        //run touch pad measurement once to set the baseline
+        threadSafe::touchRead(touchPin_);
     }
 //destructor
     ~MonitoredPump() {
